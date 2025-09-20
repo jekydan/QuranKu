@@ -42,6 +42,44 @@
       .control-group { flex-wrap: wrap; }
       .control-group > * { margin-bottom: 0.5rem; }
     }
+    /* Tafsir styling - improved contrast */
+    .tafsir-content {
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 15px;
+      background-color: #f0f4f8;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      color: #2d3748;
+      border-left: 4px solid #3b82f6;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .dark .tafsir-content {
+      background-color: #2d3748;
+      color: #e2e8f0;
+      border-left: 4px solid #60a5fa;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .tafsir-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #1e40af;
+      font-size: 1.05rem;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #cbd5e0;
+    }
+    .dark .tafsir-title {
+      color: #93c5fd;
+      border-bottom: 1px solid #4b5563;
+    }
+    .tafsir-loading {
+      text-align: center;
+      padding: 10px;
+      color: #6b7280;
+      font-style: italic;
+    }
   </style>
 </head>
 <body class="bg-gradient-to-br from-gray-100 to-gray-200 text-gray-800 min-h-screen dark:bg-gradient-to-br dark:from-gray-800 dark:to-gray-900 dark:text-gray-200">
@@ -52,7 +90,6 @@
         <button id="toggleTheme" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600" aria-label="Toggle dark mode">🌙</button>
         <button id="openMushaf" class="px-3 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">📖 Baca Qur'an</button>
         <button id="openCari" class="px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">🔎 Cari</button>
-        <!-- New button for prayer times -->
         <button id="openJadwal" class="px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700">🕌 Jadwal Sholat</button>
       </div>
     </header>
@@ -110,6 +147,10 @@
             <label class="flex items-center gap-2">
               <input id="toggleTerjemah" type="checkbox" checked />
               <span class="text-sm">Tampilkan Terjemahan</span>
+            </label>
+            <label class="flex items-center gap-2">
+              <input id="toggleTafsir" type="checkbox" />
+              <span class="text-sm">Tampilkan Tafsir</span>
             </label>
           </div>
           <div class="flex flex-wrap items-center gap-2 control-group">
@@ -181,16 +222,15 @@
   </div>
 
 <script>
-/* Improved Al-Qur'an App — patched script
-   Replaces previous <script> block. Paste in place. */
 const state = {
   surahList: [],
   currentSurah: null,
-  surahDataCache: {}, // key: surahNumber => full surah data (meta + ayahs)
-  cacheOrder: [], // track LRU order of cached surah numbers
+  surahDataCache: {},
+  cacheOrder: [],
   currentPageIndex: 0,
   ayatPerPage: 8,
   showTranslation: true,
+  showTafsir: false,
   autoplay: false,
   autoplayQueue: [],
   autoplayIndex: 0,
@@ -199,12 +239,11 @@ const state = {
   favorites: [],
   lastPos: null,
   themeDark: false,
-  loadingCount: 0, // allow nested loads
-  currentPlayingBtn: null, // reference to DOM button currently showing "Playing"
+  loadingCount: 0,
+  currentPlayingBtn: null,
   searchDebounceTimer: null,
-  // New properties for prayer times
   prayerLocation: null,
-  prayerMethod: 20, // Default: KEMENAG (Kementerian Agama Republik Indonesia)
+  prayerMethod: 20,
   prayerTimes: null
 };
 
@@ -235,12 +274,10 @@ function escapeHtml(unsafe){
 }
 
 function showLoader(show = true){
-  // nested loads supported
   state.loadingCount += show ? 1 : -1;
   state.loadingCount = Math.max(0, state.loadingCount);
   loader.classList.toggle('hidden', state.loadingCount === 0);
 
-  // disable network-related controls only
   const networkControls = [
     'btnCari','btnRandom','btnCariKata','openMushaf','openCari','bookmarkPage',
     'btnAutoPlay','nextPage','prevPage','btnLihatRiwayat','btnBukaFavorit',
@@ -260,7 +297,6 @@ function showLoader(show = true){
 }
 
 function showModal(text, opts = { allowHtml: false }){
-  // safe: escape by default
   if(opts.allowHtml){
     modalContent.innerHTML = text;
   } else {
@@ -348,7 +384,6 @@ function populateSurahSelect(){
 
 // ---------- Surah data loader (with caching & fallback) ----------
 function ensureCacheLimit(max=5){
-  // keep most recent 'max' entries
   while(state.cacheOrder.length > max){
     const removeKey = state.cacheOrder.shift();
     delete state.surahDataCache[removeKey];
@@ -359,7 +394,6 @@ async function loadSurahData(surahNumber){
   surahNumber = Number(surahNumber);
   if(!surahNumber || surahNumber < 1 || surahNumber > 114) throw new Error('Nomor surah invalid');
   if(state.surahDataCache[surahNumber]) {
-    // mark as recently used
     const idx = state.cacheOrder.indexOf(surahNumber);
     if(idx !== -1){ state.cacheOrder.splice(idx,1); }
     state.cacheOrder.push(surahNumber);
@@ -376,7 +410,6 @@ async function loadSurahData(surahNumber){
       throw new Error('No data for surah');
     }
 
-    // Find editions with fallback
     const findEdition = (identifierPart) => json.data.find(d => d.edition && d.edition.identifier && d.edition.identifier.includes(identifierPart));
     const arab = findEdition('quran-uthmani') || json.data[0];
     const indo = findEdition('indonesian') || json.data.find(d=>d.edition && d.edition.language && d.edition.language.startsWith('id')) || null;
@@ -402,7 +435,7 @@ async function loadSurahData(surahNumber){
     };
 
     state.surahDataCache[surahNumber] = meta;
-  state.cacheOrder.push(surahNumber);
+    state.cacheOrder.push(surahNumber);
     ensureCacheLimit(5);
     return meta;
   } catch(e){
@@ -411,6 +444,56 @@ async function loadSurahData(surahNumber){
     throw e;
   } finally {
     showLoader(false);
+  }
+}
+
+// ---------- Tafsir dalam Bahasa Indonesia ----------
+async function loadTafsir(surahNumber, ayatNumber) {
+  showLoader(true);
+  try {
+    // Menggunakan API yang lebih andal untuk tafsir dalam bahasa Indonesia
+    const response = await fetch(`https://api.quran.com/api/v4/tafsirs/169/by_ayah/${surahNumber}:${ayatNumber}?language=id`);
+    
+    if (!response.ok) {
+      // Jika API utama gagal, coba fallback
+      return await loadTafsirFallback(surahNumber, ayatNumber);
+    }
+    
+    const data = await response.json();
+    
+    if (data.tafsir && data.tafsir.text) {
+      return data.tafsir.text;
+    } else {
+      // Jika format respons tidak sesuai, coba fallback
+      return await loadTafsirFallback(surahNumber, ayatNumber);
+    }
+  } catch (error) {
+    console.error('Error loading tafsir:', error);
+    // Gunakan fallback API
+    return await loadTafsirFallback(surahNumber, ayatNumber);
+  } finally {
+    showLoader(false);
+  }
+}
+
+// Fallback API untuk tafsir
+async function loadTafsirFallback(surahNumber, ayatNumber) {
+  try {
+    // API alternatif untuk tafsir dalam bahasa Indonesia
+    const response = await fetch(`https://api.alquran.cloud/v1/ayah/${surahNumber}:${ayatNumber}/id.tafsir.simple`);
+    
+    if (!response.ok) throw new Error('Gagal memuat tafsir fallback');
+    
+    const data = await response.json();
+    
+    if (data.data && data.data.text) {
+      return data.data.text;
+    } else {
+      return "Tafsir tidak tersedia untuk ayat ini dalam bahasa Indonesia.";
+    }
+  } catch (error) {
+    console.error('Error loading fallback tafsir:', error);
+    return "Tidak dapat memuat tafsir. Silakan coba lagi nanti atau periksa koneksi internet Anda.";
   }
 }
 
@@ -433,7 +516,7 @@ async function renderMushafPage(surahNumber, pageIndex){
     if(chunk.length===0){
       mushafContentLeft.innerHTML = `<p class="text-sm text-gray-500">Tidak ada ayat di halaman ini.</p>`;
     } else {
-      chunk.forEach(a=>{
+      for (const a of chunk) {
         const ayEl = document.createElement('div');
         ayEl.className = 'mb-4 p-2 border-b dark:border-gray-600';
         // use escaped text for translation but arabic text is safe to inject as text node
@@ -447,8 +530,16 @@ async function renderMushafPage(surahNumber, pageIndex){
           tr.textContent = a.textId || '';
           ayEl.appendChild(tr);
         }
+        
+        // Tafsir section (initially hidden)
+        const tafsirDiv = document.createElement('div');
+        tafsirDiv.className = 'tafsir-content hidden';
+        tafsirDiv.id = `tafsir-${meta.number}-${a.numberInSurah}`;
+        tafsirDiv.innerHTML = '<div class="tafsir-loading">Memuat tafsir...</div>';
+        ayEl.appendChild(tafsirDiv);
+        
         const metaRow = document.createElement('div');
-        metaRow.className = 'mt-2 flex items-center gap-2';
+        metaRow.className = 'mt-2 flex items-center gap-2 flex-wrap';
         const numDiv = document.createElement('div');
         numDiv.className = 'ayat-num';
         numDiv.textContent = `Surah ${meta.name} (${meta.nameLocal}) — Ayat ${a.numberInSurah}`;
@@ -464,15 +555,36 @@ async function renderMushafPage(surahNumber, pageIndex){
           btn.textContent = '▶ Play';
           metaRow.appendChild(btn);
         }
+        
+        // Tafsir button
+        const tafsirBtn = document.createElement('button');
+        tafsirBtn.className = 'showTafsir px-2 py-1 rounded bg-green-100 text-green-700 text-xs hover:bg-green-200 dark:bg-green-800 dark:text-green-200 dark:hover:bg-green-700';
+        tafsirBtn.setAttribute('data-surah', meta.number);
+        tafsirBtn.setAttribute('data-ayat', a.numberInSurah);
+        tafsirBtn.textContent = '📖 Tafsir';
+        metaRow.appendChild(tafsirBtn);
+        
+        // Share button
+        const shareBtn = document.createElement('button');
+        shareBtn.className = 'shareAyat px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs hover:bg-blue-200 dark:bg-blue-800 dark:text-blue-200 dark:hover:bg-blue-700';
+        shareBtn.setAttribute('data-surah', meta.number);
+        shareBtn.setAttribute('data-ayat', a.numberInSurah);
+        shareBtn.setAttribute('data-arab', a.textArab);
+        shareBtn.setAttribute('data-terjemah', a.textId);
+        shareBtn.setAttribute('data-surahname', meta.name);
+        shareBtn.setAttribute('data-surahnamelocal', meta.nameLocal);
+        shareBtn.textContent = '🔗 Bagikan';
+        metaRow.appendChild(shareBtn);
+        
         ayEl.appendChild(metaRow);
         mushafContentLeft.appendChild(ayEl);
-      });
+      }
     }
 
     pageInfoLeft.textContent = `Surah ${meta.name} (${meta.nameLocal}) — Halaman ${pageIndex+1} / ${totalPages}`;
     surahMeta.innerHTML = `
       <div>${meta.number}. <strong>${escapeHtml(meta.name)}</strong> (${escapeHtml(meta.nameLocal)})</div>
-      <div class="text-sm text-gray-600 dark:text-gray-400">Type: ${escapeHtml(meta.revelationType)} · ${meta.numberOfAyahs} ayat</div>
+      <div class="text-sm text-gray-600 dark:text-gray-400">Type: ${escapeHtml(meta.revolutionType)} · ${meta.numberOfAyahs} ayat</div>
     `;
 
     // progress
@@ -566,16 +678,62 @@ function stopAutoplay(){
 // delegated click for play buttons (works after dynamic render)
 mushafContentLeft.addEventListener('click', (e)=>{
   const btn = e.target.closest('.playAyat');
-  if(!btn) return;
-  const url = btn.getAttribute('data-audio');
-  if(!url) return;
-  // if same button and playing -> pause
-  if(state.currentPlayingBtn === btn){
-    state.audioEl.pause();
-    resetPlayingButton();
+  if(btn) {
+    const url = btn.getAttribute('data-audio');
+    if(!url) return;
+    // if same button and playing -> pause
+    if(state.currentPlayingBtn === btn){
+      state.audioEl.pause();
+      resetPlayingButton();
+      return;
+    }
+    playSingleAudio(url, btn);
     return;
   }
-  playSingleAudio(url, btn);
+  
+  // Tafsir button handler
+  const tafsirBtn = e.target.closest('.showTafsir');
+  if(tafsirBtn) {
+    const surah = tafsirBtn.getAttribute('data-surah');
+    const ayat = tafsirBtn.getAttribute('data-ayat');
+    const tafsirDiv = document.getElementById(`tafsir-${surah}-${ayat}`);
+    
+    // Toggle tafsir visibility
+    if(tafsirDiv.classList.contains('hidden')) {
+      // Load tafsir if not already loaded
+      if(tafsirDiv.innerHTML.includes('Memuat tafsir')) {
+        loadTafsir(surah, ayat).then(tafsirText => {
+          tafsirDiv.innerHTML = `
+            <div class="tafsir-title">Tafsir - Surah ${surah} Ayat ${ayat}</div>
+            <div>${tafsirText}</div>
+          `;
+        });
+      }
+      tafsirDiv.classList.remove('hidden');
+      tafsirBtn.textContent = '⬆️ Sembunyikan Tafsir';
+    } else {
+      tafsirDiv.classList.add('hidden');
+      tafsirBtn.textContent = '📖 Tafsir';
+    }
+    return;
+  }
+  
+  // Share button handler
+  const shareBtn = e.target.closest('.shareAyat');
+  if(shareBtn) {
+    const surah = shareBtn.getAttribute('data-surah');
+    const ayat = shareBtn.getAttribute('data-ayat');
+    const arab = shareBtn.getAttribute('data-arab');
+    const terjemah = shareBtn.getAttribute('data-terjemah');
+    const surahName = shareBtn.getAttribute('data-surahname');
+    const surahNameLocal = shareBtn.getAttribute('data-surahnamelocal');
+    
+    const shareText = `${arab} - ${terjemah} (Surah ${surahName} [${surahNameLocal}] Ayat ${ayat})`;
+    const shareUrl = `https://quran.com/${surah}:${ayat}`;
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText + '\n' + shareUrl)}`;
+    window.open(whatsappUrl, '_blank');
+    return;
+  }
 });
 
 // ---------- Search / keyword ----------
@@ -602,13 +760,53 @@ async function cariAyatSingle(){
     const arab = j.data[0] ? j.data[0].text : '';
     const indo = j.data[1] ? j.data[1].text : '';
     const audio = j.data[2] ? (j.data[2].audio || j.data[2].ayahs?.[0]?.audio) : null;
+    
+    // Get surah info for sharing
+    const surahInfo = state.surahList.find(surah => surah.number == s);
+    const surahName = surahInfo ? surahInfo.englishName : '';
+    const surahNameLocal = surahInfo ? surahInfo.name : '';
+    
     output.setAttribute('aria-live','polite');
     output.innerHTML = `
       <div class="font-quran text-right mb-3">${escapeHtml(arab)}</div>
       <div class="text-sm text-gray-700 dark:text-gray-300 mb-2">${escapeHtml(indo)}</div>
       ${audio ? `<audio controls src="${escapeHtml(audio)}" class="w-full mt-2"></audio>` : ''}
       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Surah ${s} : Ayat ${a}</div>
+      <div class="mt-3 flex gap-2">
+        <button class="showTafsirSingle px-2 py-1 rounded bg-green-600 text-white text-sm hover:bg-green-700" data-surah="${s}" data-ayat="${a}">📖 Tafsir</button>
+        <button class="shareAyatSingle px-2 py-1 rounded bg-blue-600 text-white text-sm hover:bg-blue-700" data-surah="${s}" data-ayat="${a}" data-arab="${escapeHtml(arab)}" data-terjemah="${escapeHtml(indo)}" data-surahname="${escapeHtml(surahName)}" data-surahnamelocal="${escapeHtml(surahNameLocal)}">🔗 Bagikan</button>
+      </div>
     `;
+    
+    // Add event listeners for the new buttons
+    output.querySelector('.showTafsirSingle').addEventListener('click', async function() {
+      const surah = this.getAttribute('data-surah');
+      const ayat = this.getAttribute('data-ayat');
+      showLoader(true);
+      const tafsirText = await loadTafsir(surah, ayat);
+      showModal(`
+        <h3 class="font-semibold mb-3">Tafsir - Surah ${surah} Ayat ${ayat}</h3>
+        <div class="tafsir-content">
+          <div class="tafsir-title">Tafsir (Indonesia)</div>
+          <div>${tafsirText}</div>
+        </div>
+      `, {allowHtml: true});
+    });
+    
+    output.querySelector('.shareAyatSingle').addEventListener('click', function() {
+      const surah = this.getAttribute('data-surah');
+      const ayat = this.getAttribute('data-ayat');
+      const arab = this.getAttribute('data-arab');
+      const terjemah = this.getAttribute('data-terjemah');
+      const surahName = this.getAttribute('data-surahname');
+      const surahNameLocal = this.getAttribute('data-surahnamelocal');
+      
+      const shareText = `${arab} - ${terjemah} (Surah ${surahName} [${surahNameLocal}] Ayat ${ayat})`;
+      const shareUrl = `https://quran.com/${surah}:${ayat}`;
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText + '\n' + shareUrl)}`;
+      window.open(whatsappUrl, '_blank');
+    });
+    
     pushHistory({type:'ayat', info:`Surah ${s}:${a}`, time: new Date().toLocaleString()});
   } catch(e){
     console.error(e);
@@ -852,6 +1050,7 @@ async function loadPrayerTimes() {
   } catch (error) {
     console.error('Error loading prayer times:', error);
     showModal('Gagal mengambil jadwal sholat. Silakan coba lagi.');
+    document.getElementById('prayerTimesResult').innerHTML = '';
   } finally {
     showLoader(false);
   }
@@ -968,7 +1167,6 @@ document.getElementById('btnAutoPlay').addEventListener('click', ()=>{
 // bookmarks/favorites
 document.getElementById('bookmarkPage').addEventListener('click', addCurrentPageToFav);
 document.getElementById('listFav').addEventListener('click', openFavList);
-document.getElementById('btnBukaFavorit').addEventListener('click', openFavList);
 document.getElementById('clearBookmarks').addEventListener('click', ()=>{
   if(confirm('Hapus semua favorit?')){
     state.favorites = [];
@@ -1018,6 +1216,45 @@ document.getElementById('toggleTerjemah').addEventListener('change', (e)=>{
   renderMushafPage(state.currentSurah || 1, state.currentPageIndex || 0);
 });
 
+// toggle tafsir
+document.getElementById('toggleTafsir').addEventListener('change', (e)=>{
+  state.showTafsir = e.target.checked;
+  // If tafsir is enabled, load tafsir for all visible ayahs
+  if(state.showTafsir) {
+    const tafsirButtons = mushafContentLeft.querySelectorAll('.showTafsir');
+    tafsirButtons.forEach(btn => {
+      const surah = btn.getAttribute('data-surah');
+      const ayat = btn.getAttribute('data-ayat');
+      const tafsirDiv = document.getElementById(`tafsir-${surah}-${ayat}`);
+      
+      if(tafsirDiv && tafsirDiv.innerHTML.includes('Memuat tafsir')) {
+        loadTafsir(surah, ayat).then(tafsirText => {
+          tafsirDiv.innerHTML = `
+            <div class="tafsir-title">Tafsir - Surah ${surah} Ayat ${ayat}</div>
+            <div>${tafsirText}</div>
+          `;
+        });
+      }
+      
+      if(tafsirDiv) {
+        tafsirDiv.classList.remove('hidden');
+        btn.textContent = '⬆️ Sembunyikan Tafsir';
+      }
+    });
+  } else {
+    // If tafsir is disabled, hide all tafsir sections
+    const tafsirSections = mushafContentLeft.querySelectorAll('.tafsir-content');
+    tafsirSections.forEach(section => {
+      section.classList.add('hidden');
+    });
+    
+    const tafsirButtons = mushafContentLeft.querySelectorAll('.showTafsir');
+    tafsirButtons.forEach(btn => {
+      btn.textContent = '📖 Tafsir';
+    });
+  }
+});
+
 // Add event listener for the new prayer times button
 document.getElementById('openJadwal').addEventListener('click', showPrayerTimesModal);
 
@@ -1045,6 +1282,9 @@ window.addEventListener('beforeunload', ()=>{
   applyTheme();
   loadSurahList();
   initPrayerTimes();
+  
+  // Pastikan event listener untuk tombol favorit di panel pencarian terpasang
+  document.getElementById('btnBukaFavorit').addEventListener('click', openFavList);
 })();
 </script>
 </body>
